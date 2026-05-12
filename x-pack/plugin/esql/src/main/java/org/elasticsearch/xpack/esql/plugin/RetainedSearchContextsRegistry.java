@@ -13,6 +13,7 @@ import org.elasticsearch.core.Releasable;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Retains {@link AcquiredSearchContexts} beyond the lifetime of the initial distributed query so a follow-up fetch
@@ -40,11 +41,11 @@ final class RetainedSearchContextsRegistry {
     private final ConcurrentHashMap<String, Entry> entriesBySessionId = new ConcurrentHashMap<>();
 
     Registration register(String sessionId, AcquiredSearchContexts searchContexts) {
-        Entry entry = new Entry(searchContexts, () -> entriesBySessionId.remove(sessionId));
+        Entry entry = new Entry(searchContexts, e -> entriesBySessionId.remove(sessionId, e));
         if (entriesBySessionId.putIfAbsent(sessionId, entry) != null) {
             throw new IllegalStateException("search contexts already retained for session [" + sessionId + "]");
         }
-        return new Registration(sessionId, searchContexts.globalView(), entry.refs::decRef);
+        return new Registration(sessionId, searchContexts.globalView(), entry::closeRegistration);
     }
 
     Lease acquire(String sessionId) {
@@ -67,20 +68,31 @@ final class RetainedSearchContextsRegistry {
     void closeRegistration(String sessionId) {
         Entry entry = entriesBySessionId.get(sessionId);
         if (entry != null) {
-            entry.refs.decRef();
+            entry.closeRegistration();
         }
     }
 
     private static final class Entry {
         private final AcquiredSearchContexts searchContexts;
         private final AbstractRefCounted refs;
+        private final AtomicBoolean registrationClosed = new AtomicBoolean();
 
-        private Entry(AcquiredSearchContexts searchContexts, Runnable onMapRemoval) {
+        private Entry(AcquiredSearchContexts searchContexts, Consumer<Entry> onMapRemoval) {
             this.searchContexts = searchContexts;
             this.refs = AbstractRefCounted.of(() -> {
-                onMapRemoval.run();
+                onMapRemoval.accept(this);
                 searchContexts.close();
             });
+        }
+
+        /**
+         * Releases the registration's reference on the underlying ref count. Guarded by an {@link AtomicBoolean} so that concurrent
+         * callers (task-completion listener and coordinator release request) safely converge to a single {@code decRef}.
+         */
+        void closeRegistration() {
+            if (registrationClosed.compareAndSet(false, true)) {
+                refs.decRef();
+            }
         }
     }
 

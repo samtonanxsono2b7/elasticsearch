@@ -133,6 +133,35 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         assertTrue(searchContext.isClosed());
     }
 
+    public void testRegistrationCloseAndCloseBySessionIdAreIdempotent() {
+        SearchContext searchContext = createSearchContext();
+        AcquiredSearchContexts contexts = createContexts(searchContext);
+
+        RetainedSearchContextsRegistry.Registration registration = registry.register("session-1", contexts);
+        RetainedSearchContextsRegistry.Lease lease = registry.acquire("session-1");
+
+        registration.close();
+        registry.closeRegistration("session-1");
+
+        assertFalse(searchContext.isClosed());
+        assertTrue(registry.isRetained("session-1"));
+
+        lease.close();
+        assertTrue(searchContext.isClosed());
+    }
+
+    public void testCloseBySessionIdThenRegistrationClose() {
+        SearchContext searchContext = createSearchContext();
+        AcquiredSearchContexts contexts = createContexts(searchContext);
+
+        RetainedSearchContextsRegistry.Registration registration = registry.register("session-1", contexts);
+
+        registry.closeRegistration("session-1");
+        registration.close();
+
+        assertTrue(searchContext.isClosed());
+    }
+
     public void testAcquireAfterRegistrationCloseRejected() {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
