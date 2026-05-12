@@ -237,10 +237,6 @@ public class ComputeService {
         return remoteFetchService;
     }
 
-    FilterPushdownRegistry filterPushdownRegistry() {
-        return filterPushdownRegistry;
-    }
-
     FormatReaderRegistry formatReaderRegistry() {
         return formatReaderRegistry;
     }

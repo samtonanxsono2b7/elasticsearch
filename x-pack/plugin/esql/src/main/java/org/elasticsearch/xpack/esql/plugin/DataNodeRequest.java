@@ -169,11 +169,7 @@ final class DataNodeRequest extends AbstractTransportRequest implements IndicesR
         } else {
             this.reductionLateMaterialization = false;
         }
-        if (in.getTransportVersion().supports(ESQL_REMOTE_FETCH_RETAINED_CONTEXTS)) {
-            this.retainSearchContexts = in.readBoolean();
-        } else {
-            this.retainSearchContexts = false;
-        }
+        this.retainSearchContexts = in.getTransportVersion().supports(ESQL_REMOTE_FETCH_RETAINED_CONTEXTS) && in.readBoolean();
         if (in.getTransportVersion().supports(EXTERNAL_SPLITS_IN_DATA_NODE_REQUEST)) {
             this.externalSplits = in.readNamedWriteableCollectionAsList(ExternalSplit.class);
         } else {
@@ -366,7 +362,7 @@ final class DataNodeRequest extends AbstractTransportRequest implements IndicesR
         );
     }
 
-    public record Shard(ShardId shardId, SplitShardCountSummary reshardSplitShardCountSummary) implements Writeable {
+    public record Shard(ShardId shardId, SplitShardCountSummary splitShardCountSummary) implements Writeable {
         Shard(StreamInput in) throws IOException {
             this(new ShardId(in), new SplitShardCountSummary(in));
         }
@@ -374,7 +370,7 @@ final class DataNodeRequest extends AbstractTransportRequest implements IndicesR
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             shardId.writeTo(out);
-            reshardSplitShardCountSummary.writeTo(out);
+            splitShardCountSummary.writeTo(out);
         }
     }
 }
