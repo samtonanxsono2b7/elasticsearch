@@ -40,6 +40,13 @@ import java.util.function.Consumer;
 final class RetainedSearchContextsRegistry {
     private final ConcurrentHashMap<String, Entry> entriesBySessionId = new ConcurrentHashMap<>();
 
+    /**
+     * Registers the given search contexts for retention under {@code sessionId}, transferring lifecycle ownership to this registry.
+     * On success, the returned {@link Registration} holds one reference; closing it (or all outstanding leases) will release the contexts.
+     *
+     * @throws IllegalStateException if contexts are already retained for {@code sessionId}. In this case ownership is <b>not</b>
+     *                               transferred — the caller remains responsible for closing {@code searchContexts}.
+     */
     Registration register(String sessionId, AcquiredSearchContexts searchContexts) {
         Entry entry = new Entry(searchContexts, e -> entriesBySessionId.remove(sessionId, e));
         if (entriesBySessionId.putIfAbsent(sessionId, entry) != null) {
