@@ -306,13 +306,7 @@ public class RemoteFetchPlannerTests extends ESTestCase {
     }
 
     private static RemoteFetchExec invokeAppendPushdown(RemoteFetchExec remoteFetchExec, UnaryExec pushdownNode) {
-        try {
-            var method = RemoteFetchPlanner.class.getDeclaredMethod("appendPushdown", RemoteFetchExec.class, UnaryExec.class);
-            method.setAccessible(true);
-            return (RemoteFetchExec) method.invoke(null, remoteFetchExec, pushdownNode);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError("failed to invoke appendPushdown", e);
-        }
+        return RemoteFetchPlanner.appendPushdown(remoteFetchExec, pushdownNode);
     }
 
     private record PlannedQuery(Configuration configuration, PhysicalPlan physicalPlan) {}

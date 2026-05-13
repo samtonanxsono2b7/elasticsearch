@@ -232,7 +232,7 @@ final class RemoteFetchPlanner {
         return true;
     }
 
-    private static RemoteFetchExec appendPushdown(RemoteFetchExec remoteFetchExec, UnaryExec pushdownNode) {
+    static RemoteFetchExec appendPushdown(RemoteFetchExec remoteFetchExec, UnaryExec pushdownNode) {
         PhysicalPlan source = remoteFetchExec.pushdownPlan();
         Attribute positionAttribute;
         if (source == null) {
