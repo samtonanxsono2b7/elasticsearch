@@ -1,4 +1,4 @@
-area: Compute Engine
+area: ES|QL
 issues: []
 pr: 148028
 summary: Add remote fetch transport and context-retention plumbing
