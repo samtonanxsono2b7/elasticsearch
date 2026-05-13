@@ -28,7 +28,7 @@ public class RemoteFetchHandleTests extends ESTestCase {
 
         try (BytesStreamOutput out = new BytesStreamOutput()) {
             handle.writeTo(out);
-            try (StreamInput in = StreamInput.wrap(out.bytes().toBytesRef().bytes)) {
+            try (StreamInput in = out.bytes().streamInput()) {
                 assertEquals(handle, RemoteFetchHandle.READER.read(in));
             }
         }

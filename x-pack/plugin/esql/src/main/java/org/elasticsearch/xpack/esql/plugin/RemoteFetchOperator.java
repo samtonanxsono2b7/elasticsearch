@@ -294,6 +294,13 @@ public final class RemoteFetchOperator extends AsyncOperator<RemoteFetchOperator
                         + "]"
                 );
             }
+            if (pageHasPosition && (page.getBlock(page.getBlockCount() - 1) instanceof IntBlock == false)) {
+                throw new IllegalStateException(
+                    "remote fetch position-mapping column must be an IntBlock but was ["
+                        + page.getBlock(page.getBlockCount() - 1).getClass().getSimpleName()
+                        + "]"
+                );
+            }
             if (hasPositionMapping == null) {
                 hasPositionMapping = pageHasPosition;
             } else if (hasPositionMapping != pageHasPosition) {

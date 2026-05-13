@@ -50,7 +50,9 @@ public class RemoteFetchServiceRequestTests extends AbstractWireSerializingTestC
             case 2 -> new RemoteFetchService.Request(
                 instance.sessionId(),
                 instance.fields(),
-                randomList(0, 8, this::randomHandle),
+                instance.handles().isEmpty()
+                    ? randomList(1, 8, this::randomHandle)
+                    : randomValueOtherThan(instance.handles(), () -> randomList(0, 8, this::randomHandle)),
                 instance.configuration()
             );
             case 3 -> new RemoteFetchService.Request(

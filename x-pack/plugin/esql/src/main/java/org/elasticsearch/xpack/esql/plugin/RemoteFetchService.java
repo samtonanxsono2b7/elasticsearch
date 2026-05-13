@@ -367,39 +367,47 @@ public final class RemoteFetchService {
 
     private List<Page> collectFetchedPagesForBatch(BidirectionalBatchExchangeClient client, long batchId) throws Exception {
         List<Page> pages = new ArrayList<>();
-        boolean completed = false;
-        while (completed == false) {
-            Page page = client.pollPage();
-            if (page != null) {
-                try {
-                    BatchMetadata metadata = page.batchMetadata();
-                    if (metadata == null || metadata.batchId() != batchId) {
-                        throw new IllegalStateException("received unexpected batch metadata while awaiting batch [" + batchId + "]");
+        boolean success = false;
+        try {
+            boolean completed = false;
+            while (completed == false) {
+                Page page = client.pollPage();
+                if (page != null) {
+                    try {
+                        BatchMetadata metadata = page.batchMetadata();
+                        if (metadata == null || metadata.batchId() != batchId) {
+                            throw new IllegalStateException("received unexpected batch metadata while awaiting batch [" + batchId + "]");
+                        }
+                        if (page.getPositionCount() > 0) {
+                            pages.add(stripBatchMetadata(page));
+                        }
+                        if (metadata.isLastPageInBatch()) {
+                            client.markBatchCompleted(batchId);
+                            completed = true;
+                        }
+                    } finally {
+                        page.releaseBlocks();
                     }
-                    if (page.getPositionCount() > 0) {
-                        pages.add(stripBatchMetadata(page));
-                    }
-                    if (metadata.isLastPageInBatch()) {
-                        client.markBatchCompleted(batchId);
-                        completed = true;
-                    }
-                } finally {
-                    page.releaseBlocks();
+                    continue;
                 }
-                continue;
+                Exception failure = client.getPrimaryFailure();
+                if (failure != null) {
+                    throw failure;
+                }
+                IsBlockedResult blocked = client.waitUntilPageReady();
+                if (blocked.listener().isDone() == false) {
+                    PlainActionFuture<Void> waitFuture = new PlainActionFuture<>();
+                    blocked.listener().addListener(waitFuture);
+                    FutureUtils.get(waitFuture);
+                }
             }
-            Exception failure = client.getPrimaryFailure();
-            if (failure != null) {
-                throw failure;
-            }
-            IsBlockedResult blocked = client.waitUntilPageReady();
-            if (blocked.listener().isDone() == false) {
-                PlainActionFuture<Void> waitFuture = new PlainActionFuture<>();
-                blocked.listener().addListener(waitFuture);
-                FutureUtils.get(waitFuture);
+            success = true;
+            return pages;
+        } finally {
+            if (success == false) {
+                Releasables.closeExpectNoException(Releasables.wrap(Iterators.map(pages.iterator(), page -> page::releaseBlocks)));
             }
         }
-        return pages;
     }
 
     int retainedSessions() {
@@ -456,7 +464,7 @@ public final class RemoteFetchService {
             "remote_fetch_exchange"
         );
         final BidirectionalBatchExchangeServer server = new BidirectionalBatchExchangeServer(
-            request.clientToServerId(),
+            request.sessionId(),
             request.clientToServerId(),
             request.serverToClientId(),
             exchangeService,
@@ -524,29 +532,39 @@ public final class RemoteFetchService {
         List<Page> current = appendPositionColumn(pages);
         List<Operator.OperatorFactory> factories = new ArrayList<>();
         compilePushdownFactories(pushdownPlan, factories, shardContexts);
-        for (Operator.OperatorFactory factory : factories) {
-            List<Page> next = new ArrayList<>();
-            try (
-                Operator operator = factory.get(new DriverContext(bigArrays, blockFactory, localBreakerSettings, "remote_fetch_pushdown"))
-            ) {
-                for (Page page : current) {
-                    operator.addInput(page);
+        boolean success = false;
+        try {
+            for (Operator.OperatorFactory factory : factories) {
+                List<Page> next = new ArrayList<>();
+                try (
+                    Operator operator = factory.get(
+                        new DriverContext(bigArrays, blockFactory, localBreakerSettings, "remote_fetch_pushdown")
+                    )
+                ) {
+                    for (Page page : current) {
+                        operator.addInput(page);
+                        Page output;
+                        while ((output = operator.getOutput()) != null) {
+                            output.allowPassingToDifferentDriver();
+                            next.add(output);
+                        }
+                    }
+                    operator.finish();
                     Page output;
                     while ((output = operator.getOutput()) != null) {
                         output.allowPassingToDifferentDriver();
                         next.add(output);
                     }
                 }
-                operator.finish();
-                Page output;
-                while ((output = operator.getOutput()) != null) {
-                    output.allowPassingToDifferentDriver();
-                    next.add(output);
-                }
+                current = next;
             }
-            current = next;
+            success = true;
+            return current;
+        } finally {
+            if (success == false) {
+                Releasables.closeExpectNoException(Releasables.wrap(Iterators.map(current.iterator(), page -> page::releaseBlocks)));
+            }
         }
-        return current;
     }
 
     private List<Page> appendPositionColumn(List<Page> pages) {

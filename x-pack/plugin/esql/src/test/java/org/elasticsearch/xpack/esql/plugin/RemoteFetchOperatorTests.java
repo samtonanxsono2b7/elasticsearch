@@ -104,6 +104,78 @@ public class RemoteFetchOperatorTests extends ESTestCase {
         }
     }
 
+    public void testFilteredFetchDropsRowsAndRemapsPositions() {
+        DriverContext driverContext = new DriverContext(BigArrays.NON_RECYCLING_INSTANCE, TestBlockFactory.getNonBreakingInstance(), null);
+        ThreadContext threadContext = new ThreadContext(Settings.EMPTY);
+        List<RemoteFetchService.FetchField> fields = List.of(
+            new RemoteFetchService.FetchField("salary", DataType.INTEGER),
+            new RemoteFetchService.FetchField("name", DataType.KEYWORD)
+        );
+        List<Attribute> outputFields = List.of(
+            new ReferenceAttribute(Source.EMPTY, null, "salary", DataType.INTEGER),
+            new ReferenceAttribute(Source.EMPTY, null, "name", DataType.KEYWORD)
+        );
+        RemoteFetchOperator.Client client = (nodeId, request, listener) -> {
+            switch (nodeId) {
+                case "node-a" -> {
+                    // sent handles [h0, h1], filter keeps only h1 (original offset 1)
+                    listener.onResponse(List.of(pageWithPosition(driverContext, 30, "c", 1)));
+                }
+                case "node-b" -> {
+                    // sent handle [h0], filter keeps it (original offset 0)
+                    listener.onResponse(List.of(pageWithPosition(driverContext, 20, "b", 0)));
+                }
+                default -> listener.onFailure(new IllegalStateException("unexpected node [" + nodeId + "]"));
+            }
+        };
+
+        Page input = null;
+        Page output = null;
+        try (
+            RemoteFetchOperator operator = new RemoteFetchOperator(
+                driverContext,
+                threadContext,
+                0,
+                fields,
+                outputFields,
+                null,
+                ConfigurationAware.CONFIGURATION_MARKER,
+                2,
+                client
+            )
+        ) {
+            input = new Page(handles(driverContext), carry(driverContext));
+            operator.addInput(input);
+            input = null;
+            output = operator.getOutput();
+
+            assertNotNull(output);
+            // row 0 (node-a, offset 0) was filtered out, so only 2 rows survive
+            assertEquals(2, output.getPositionCount());
+            assertEquals(4, output.getBlockCount());
+
+            // carry column: row 1 (node-b, offset 0) and row 2 (node-a, offset 1) survive
+            IntBlock carryValues = output.getBlock(1);
+            assertEquals(200, carryValues.getInt(0));
+            assertEquals(300, carryValues.getInt(1));
+
+            IntBlock fetchedInts = output.getBlock(2);
+            assertEquals(20, fetchedInts.getInt(0));
+            assertEquals(30, fetchedInts.getInt(1));
+
+            BytesRefBlock fetchedStrings = output.getBlock(3);
+            assertEquals("b", utf8(fetchedStrings, 0));
+            assertEquals("c", utf8(fetchedStrings, 1));
+        } finally {
+            if (input != null) {
+                input.releaseBlocks();
+            }
+            if (output != null) {
+                output.releaseBlocks();
+            }
+        }
+    }
+
     private static Page page(DriverContext driverContext, int intValue, String stringValue) {
         try (
             IntBlock.Builder intBuilder = driverContext.blockFactory().newIntBlockBuilder(1);
@@ -112,6 +184,19 @@ public class RemoteFetchOperatorTests extends ESTestCase {
             intBuilder.appendInt(intValue);
             stringBuilder.appendBytesRef(new BytesRef(stringValue));
             return new Page(intBuilder.build(), stringBuilder.build());
+        }
+    }
+
+    private static Page pageWithPosition(DriverContext driverContext, int intValue, String stringValue, int originalPosition) {
+        try (
+            IntBlock.Builder intBuilder = driverContext.blockFactory().newIntBlockBuilder(1);
+            BytesRefBlock.Builder stringBuilder = driverContext.blockFactory().newBytesRefBlockBuilder(1);
+            IntBlock.Builder posBuilder = driverContext.blockFactory().newIntBlockBuilder(1)
+        ) {
+            intBuilder.appendInt(intValue);
+            stringBuilder.appendBytesRef(new BytesRef(stringValue));
+            posBuilder.appendInt(originalPosition);
+            return new Page(intBuilder.build(), stringBuilder.build(), posBuilder.build());
         }
     }
 
