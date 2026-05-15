@@ -540,7 +540,7 @@ public class ComputeService {
                 cancelQueryOnFailure,
                 finalListener.map(profiles -> {
                     execInfo.markEndQuery();
-                    return new Result(mainPlan.output(), collectedPages, configuration, profiles, execInfo);
+                    return new Result(mainPlan.output(), collectedPages, null, configuration, profiles, execInfo);
                 })
             )
         ) {
@@ -768,7 +768,7 @@ public class ComputeService {
                     cancelQueryOnFailure,
                     listener.map(completionInfo -> {
                         updateExecutionInfoAfterCoordinatorOnlyQuery(execInfo);
-                        return new Result(resolvedPlan.output(), collectedPages, configuration, completionInfo, execInfo);
+                        return new Result(resolvedPlan.output(), collectedPages, null, configuration, completionInfo, execInfo);
                     })
                 )
             ) {
@@ -857,7 +857,7 @@ public class ComputeService {
                 listener.delegateFailureAndWrap((l, completionInfo) -> {
                     failIfAllShardsFailed(execInfo, collectedPages);
                     execInfo.markEndQuery();
-                    l.onResponse(new Result(outputAttributes, collectedPages, configuration, completionInfo, execInfo));
+                    l.onResponse(new Result(outputAttributes, collectedPages, null, configuration, completionInfo, execInfo));
                 })
             )
         ) {
@@ -1035,7 +1035,7 @@ public class ComputeService {
                 cancelQueryOnFailure,
                 listener.delegateFailureAndWrap((l, completionInfo) -> {
                     execInfo.markEndQuery();
-                    l.onResponse(new Result(outputAttributes, collectedPages, configuration, completionInfo, execInfo));
+                    l.onResponse(new Result(outputAttributes, collectedPages, null, configuration, completionInfo, execInfo));
                 })
             )
         ) {

@@ -1520,6 +1520,7 @@ public class LocalExecutionPlanner {
             .pushedFilter(externalSource.pushedFilter())
             .pushedExpressions(externalSource.pushedExpressions())
             .fileList(fileList)
+            .schemaMap(externalSource.schemaMap())
             .partitionColumnNames(partitionColumnNames)
             .sliceQueue(sliceQueue)
             .parsingParallelism(context.queryPragmas().parsingParallelism())
