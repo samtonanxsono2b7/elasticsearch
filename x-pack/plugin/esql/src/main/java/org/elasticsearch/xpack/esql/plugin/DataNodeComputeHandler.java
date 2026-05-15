@@ -826,7 +826,7 @@ final class DataNodeComputeHandler implements TransportRequestHandler<DataNodeRe
         var computeSearchContexts = new AcquiredSearchContexts(request.shards().size());
         ActionListener<DataNodeComputeResponse> responseListener;
         if (request.retainSearchContexts()) {
-            final RetainedSearchContextsRegistry.Registration retainedSearchContexts;
+            final RetainedSearchContextsRegistry.Handle retainedSearchContexts;
             try {
                 retainedSearchContexts = computeService.remoteFetchService()
                     .retainSearchContexts(nodeReduceSessionId, computeSearchContexts);

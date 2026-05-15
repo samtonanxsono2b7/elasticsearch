@@ -20,47 +20,42 @@ import java.util.function.Consumer;
  * phase can revisit the original shard owners.
  * <p>
  * During the initial query, the data-node handler calls {@link #register} to place the session's search contexts into this registry,
- * receiving a {@link Registration} in return. Concurrent fetch requests can call {@link #acquire} to obtain a {@link Lease} that grants
+ * receiving a {@link Handle} in return. Concurrent fetch requests can call {@link #acquire} to obtain another {@link Handle} that grants
  * access to the same search contexts. When the query task completes (or an explicit release request arrives from the coordinating node),
- * the registration is closed — its reference is released — but any already-acquired leases remain valid until individually closed.
- * The underlying search contexts are released only when the last outstanding handle (registration or lease) is closed.
+ * the registration is closed — its reference is released — but any already-acquired handles remain valid until individually closed.
+ * The underlying search contexts are released only when the last outstanding handle is closed.
  * <p>
  * <b>Concurrency design:</b> This registry uses a {@link ConcurrentHashMap} for the session map and {@link AbstractRefCounted} for
  * per-entry lifecycle. There is no coarse-grained synchronization. A consequence is that {@link #acquire} may succeed during the brief
- * window between a coordinator sending its release signal and that signal being processed (i.e., a "straggler" lease). This is acceptable:
- * a straggler operates on still-valid contexts (guaranteed by {@code tryIncRef}), completes its fetch, and its eventual close triggers
- * final cleanup. The alternative — a strict gate preventing all post-release leases — would require synchronized compound operations but
- * provides no correctness benefit, only avoiding a small amount of wasted work in an unlikely race.
- * <p>
- * Both {@link Registration} and {@link Lease} extend {@link Handle}, a {@link Releasable} that holds a reference to the session's
- * search contexts and decrements the entry's reference count on close. They differ only in semantics: a Registration is the single
- * owner that initiated retention, while Leases are short-lived borrowers (zero or more per session) that keep the contexts alive for
- * the duration of a fetch phase.
+ * window between a coordinator sending its release signal and that signal being processed (i.e., a "straggler" acquire). This is
+ * acceptable: a straggler operates on still-valid contexts (guaranteed by {@code tryIncRef}), completes its fetch, and its eventual
+ * close triggers final cleanup. The alternative — a strict gate preventing all post-release acquires — would require synchronized
+ * compound operations but provides no correctness benefit, only avoiding a small amount of wasted work in an unlikely race.
  */
 final class RetainedSearchContextsRegistry {
     private final ConcurrentHashMap<String, Entry> entriesBySessionId = new ConcurrentHashMap<>();
 
     /**
      * Registers the given search contexts for retention under {@code sessionId}, transferring lifecycle ownership to this registry.
-     * On success, the returned {@link Registration} holds one reference; closing it (or all outstanding leases) will release the contexts.
+     * On success, the returned {@link Handle} holds one reference; closing it (or all outstanding handles) will release the contexts.
      *
      * @throws IllegalStateException if contexts are already retained for {@code sessionId}. In this case ownership is <b>not</b>
      *                               transferred — the caller remains responsible for closing {@code searchContexts}.
      */
-    Registration register(String sessionId, AcquiredSearchContexts searchContexts) {
+    Handle register(String sessionId, AcquiredSearchContexts searchContexts) {
         Entry entry = new Entry(searchContexts, e -> entriesBySessionId.remove(sessionId, e));
         if (entriesBySessionId.putIfAbsent(sessionId, entry) != null) {
             throw new IllegalStateException("search contexts already retained for session [" + sessionId + "]");
         }
-        return new Registration(sessionId, searchContexts.globalView(), entry::closeRegistration);
+        return new Handle(sessionId, searchContexts.globalView(), entry::closeRegistration);
     }
 
-    Lease acquire(String sessionId) {
+    Handle acquire(String sessionId) {
         Entry entry = entriesBySessionId.get(sessionId);
         if (entry == null || entry.refs.tryIncRef() == false) {
             throw new IllegalStateException("no retained search contexts for session [" + sessionId + "]");
         }
-        return new Lease(sessionId, entry.searchContexts.globalView(), entry.refs::decRef);
+        return new Handle(sessionId, entry.searchContexts.globalView(), entry.refs::decRef);
     }
 
     int retainedSessions() {
@@ -103,7 +98,7 @@ final class RetainedSearchContextsRegistry {
         }
     }
 
-    abstract static sealed class Handle implements Releasable permits Registration, Lease {
+    static final class Handle implements Releasable {
         private final String sessionId;
         private final IndexedByShardId<ComputeSearchContext> searchContexts;
         private final Runnable onClose;
@@ -128,18 +123,6 @@ final class RetainedSearchContextsRegistry {
             if (closed.compareAndSet(false, true)) {
                 onClose.run();
             }
-        }
-    }
-
-    static final class Registration extends Handle {
-        private Registration(String sessionId, IndexedByShardId<ComputeSearchContext> searchContexts, Runnable onClose) {
-            super(sessionId, searchContexts, onClose);
-        }
-    }
-
-    static final class Lease extends Handle {
-        private Lease(String sessionId, IndexedByShardId<ComputeSearchContext> searchContexts, Runnable onClose) {
-            super(sessionId, searchContexts, onClose);
         }
     }
 }
