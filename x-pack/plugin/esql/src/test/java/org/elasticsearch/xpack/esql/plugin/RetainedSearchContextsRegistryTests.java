@@ -30,8 +30,8 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
 
-        RetainedSearchContextsRegistry.Lease lease;
-        try (RetainedSearchContextsRegistry.Registration registration = registry.register("session-1", contexts)) {
+        RetainedSearchContextsRegistry.Handle lease;
+        try (RetainedSearchContextsRegistry.Handle registration = registry.register("session-1", contexts)) {
             assertTrue(registry.isRetained("session-1"));
             assertThat(registration.searchContexts().size(), equalTo(1));
 
@@ -54,7 +54,7 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext duplicateSearchContext = createSearchContext();
         AcquiredSearchContexts duplicateContexts = createContexts(duplicateSearchContext);
 
-        try (RetainedSearchContextsRegistry.Registration ignored = registry.register("session-1", contexts)) {
+        try (RetainedSearchContextsRegistry.Handle ignored = registry.register("session-1", contexts)) {
             IllegalStateException e = expectThrows(IllegalStateException.class, () -> registry.register("session-1", duplicateContexts));
             assertEquals("search contexts already retained for session [session-1]", e.getMessage());
         }
@@ -73,8 +73,8 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
 
-        RetainedSearchContextsRegistry.Lease lease;
-        try (RetainedSearchContextsRegistry.Registration ignored = registry.register("session-1", contexts)) {
+        RetainedSearchContextsRegistry.Handle lease;
+        try (RetainedSearchContextsRegistry.Handle ignored = registry.register("session-1", contexts)) {
             lease = registry.acquire("session-1");
         }
 
@@ -88,7 +88,7 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
 
-        try (RetainedSearchContextsRegistry.Registration registration = registry.register("session-1", contexts)) {
+        try (RetainedSearchContextsRegistry.Handle registration = registry.register("session-1", contexts)) {
             assertNotNull(registration.searchContexts().get(0));
             assertFalse(searchContext.isClosed());
         }
@@ -114,9 +114,9 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
 
-        RetainedSearchContextsRegistry.Lease lease1;
-        RetainedSearchContextsRegistry.Lease lease2;
-        try (RetainedSearchContextsRegistry.Registration ignored = registry.register("session-1", contexts)) {
+        RetainedSearchContextsRegistry.Handle lease1;
+        RetainedSearchContextsRegistry.Handle lease2;
+        try (RetainedSearchContextsRegistry.Handle ignored = registry.register("session-1", contexts)) {
             lease1 = registry.acquire("session-1");
             lease2 = registry.acquire("session-1");
         }
@@ -137,8 +137,8 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
 
-        RetainedSearchContextsRegistry.Registration registration = registry.register("session-1", contexts);
-        RetainedSearchContextsRegistry.Lease lease = registry.acquire("session-1");
+        RetainedSearchContextsRegistry.Handle registration = registry.register("session-1", contexts);
+        RetainedSearchContextsRegistry.Handle lease = registry.acquire("session-1");
 
         registration.close();
         registry.closeRegistration("session-1");
@@ -154,7 +154,7 @@ public class RetainedSearchContextsRegistryTests extends ESTestCase {
         SearchContext searchContext = createSearchContext();
         AcquiredSearchContexts contexts = createContexts(searchContext);
 
-        RetainedSearchContextsRegistry.Registration registration = registry.register("session-1", contexts);
+        RetainedSearchContextsRegistry.Handle registration = registry.register("session-1", contexts);
 
         registry.closeRegistration("session-1");
         registration.close();
