@@ -131,7 +131,7 @@ public final class RemoteFetchService {
         );
     }
 
-    RetainedSearchContextsRegistry.Registration retainSearchContexts(String sessionId, AcquiredSearchContexts searchContexts) {
+    RetainedSearchContextsRegistry.Handle retainSearchContexts(String sessionId, AcquiredSearchContexts searchContexts) {
         return retainedSearchContexts.register(sessionId, searchContexts);
     }
 
@@ -434,7 +434,7 @@ public final class RemoteFetchService {
     }
 
     private void startExchangeFetchServer(ExchangeSetupRequest request, CancellableTask task, ActionListener<Void> listener) {
-        final RetainedSearchContextsRegistry.Lease lease;
+        final RetainedSearchContextsRegistry.Handle lease;
         try {
             lease = retainedSearchContexts.acquire(request.sessionId());
         } catch (Exception e) {
